@@ -54,6 +54,8 @@ public class SwerveModule extends SubsystemBase {
   public void setDesiredState(SwerveModuleState desiredState) {
     // Optimize the reference state to avoid spinning further than 90 degrees
     state = SwerveModuleState.optimize(desiredState, new Rotation2d(pivotEncoder.getPosition()));
+    driveMotor.set(state.speedMetersPerSecond/Constants.MAX_LINEAR_SPEED);
+    pivotPIDController.setReference(state.angle.getDegrees(), CANSparkMax.ControlType.kPosition);
   }
 
 
@@ -64,7 +66,5 @@ public class SwerveModule extends SubsystemBase {
 
   @Override
   public void periodic() {
-    driveMotor.set(state.speedMetersPerSecond/Constants.MAX_LINEAR_SPEED);
-    pivotPIDController.setReference(state.angle.getDegrees(), CANSparkMax.ControlType.kPosition);
   }
 }
