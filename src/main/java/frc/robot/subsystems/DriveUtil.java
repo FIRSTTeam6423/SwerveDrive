@@ -5,17 +5,20 @@
 package frc.robot.subsystems;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
+import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.Constants;
 import frc.robot.RobotContainer;
+import com.kauailabs.navx.frc.AHRS;
+import edu.wpi.first.wpilibj.SPI;
 
 public class DriveUtil extends SubsystemBase {
   //P denotes Pivoting, D driving
-
   private final Translation2d m_frontLeftLoc = new Translation2d(Constants.TOPLEFT_X, Constants.TOPLEFT_Y);
   private final Translation2d m_frontRightLoc = new Translation2d(Constants.TOPRIGHT_X, Constants.TOPRIGHT_Y);
   private final Translation2d m_backLeftLoc = new Translation2d(Constants.BOTTOMLEFT_X, Constants.TOPLEFT_Y);
@@ -28,32 +31,61 @@ public class DriveUtil extends SubsystemBase {
 
   private final SwerveDriveKinematics m_kinematics = new SwerveDriveKinematics(m_frontLeftLoc, m_frontRightLoc, m_backLeftLoc, m_backRightLoc);
 
-
   private ChassisSpeeds speeds;
+
+  private final SwerveDriveOdometry m_odometry = new SwerveDriveOdometry(m_kinematics, getHeading2d());
+
+  private AHRS gyro = new AHRS(SPI.Port.kMXP);
 
   public double setpoint;
 
   public DriveUtil() {
-  setpoint = 0;
+    setpoint = 0;
+
+    calibrateGyro();
+  }
+
+  public void driveRobot(boolean fieldRelative){
+    var swerveModuleStates = m_kinematics.toSwerveModuleStates(
+        fieldRelative
+            ? ChassisSpeeds.fromFieldRelativeSpeeds(RobotContainer.getDriverLeftXboxX() * Constants.MAX_LINEAR_SPEED,  
+            RobotContainer.getDriverLeftXboxY() * Constants.MAX_LINEAR_SPEED, 
+            RobotContainer.getDriverRightXboxX() * Constants.MAX_ANGULAR_SPEED, getHeading2d())
+            : new ChassisSpeeds(RobotContainer.getDriverLeftXboxX() * Constants.MAX_LINEAR_SPEED, 
+            RobotContainer.getDriverLeftXboxY() * Constants.MAX_LINEAR_SPEED,
+            RobotContainer.getDriverRightXboxX() * Constants.MAX_ANGULAR_SPEED));
+
+    SwerveDriveKinematics.desaturateWheelSpeeds(swerveModuleStates, Constants.MAX_LINEAR_SPEED);
+    
+    m_frontLeft.setDesiredState(swerveModuleStates[0]);
+    m_frontRight.setDesiredState(swerveModuleStates[1]);
+    m_backLeft.setDesiredState(swerveModuleStates[2]);
+    m_backRight.setDesiredState(swerveModuleStates[3]);
 
   }
 
-  public void driveRobot(){
-    //Scaling needed for inputs to speeds - 1 m/s is not max we want
-    speeds = new ChassisSpeeds(RobotContainer.getDriverLeftXboxX() * Constants.MAX_LINEAR_SPEED, 
-    RobotContainer.getDriverLeftXboxY() * Constants.MAX_LINEAR_SPEED,
-    RobotContainer.getDriverRightXboxX() * Constants.MAX_ANGULAR_SPEED);
-    
-    var SwerveModuleStates = m_kinematics.toSwerveModuleStates(speeds);
-    m_frontLeft.setDesiredState(SwerveModuleStates[0]);
-    m_frontRight.setDesiredState(SwerveModuleStates[1]);
-    m_backLeft.setDesiredState(SwerveModuleStates[2]);
-    m_backRight.setDesiredState(SwerveModuleStates[3]);
+  public Rotation2d getHeading2d(){
+    return Rotation2d.fromDegrees(gyro.getYaw());
+}
 
+  public double getHeading(){
+    return gyro.getYaw();
+  }
+
+  public void resetGyro(){
+    gyro.reset();
+  }
+
+  public void calibrateGyro(){
+    gyro.calibrate();
   }
 
   @Override
   public void periodic() {
     // This method will be called once per scheduler run
+    var gyroAngle = getHeading2d();
+
+    m_odometry.update(gyroAngle, m_frontLeft.getState(), m_frontRight.getState(),
+    m_backLeft.getState(), m_backRight.getState());
   }
 }
